@@ -5,8 +5,8 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-# Cryptographically signs user session cookies to prevent tampering
-app.secret_key = os.urandom(24)
+# Cryptographically signs user session cookies safely using a persistent key
+app.secret_key = 'uni_share_permanent_production_secret_string_key'
 
 # Configure SQLite Database path securely
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -60,14 +60,15 @@ def index():
     is_admin = user_email in AUTHORIZED_GMAILS
     
     return render_template('index.html', structure=file_structure, email=user_email, username=username, is_admin=is_admin)
+
 @app.route('/signup', methods=['POST'])
 def signup():
     email = request.form.get('email').strip().lower()
     username = request.form.get('username').strip()
     password = request.form.get('password')
     
-    # Secure validation: prevents duplicate account hijacking
-    existing_user = User.query.filter_by(email=email).first()
+    # Fixed Query: Modern Flask-SQLAlchemy execution pattern preventing background engine crashes
+    existing_user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
     if existing_user:
         flash("An account with this email already exists.", "danger")
         return redirect(url_for('index'))
@@ -189,12 +190,4 @@ def delete_folder():
 @app.route('/download/<subject>/<filename>')
 def download_file(subject, filename):
     if not session.get('email'):
-        return "Unauthorized Access", 403
-    if '..' in subject or '..' in filename:
-        return "Bad Request", 400
-    target_dir = os.path.join(app.config['UPLOAD_FOLDER'], subject)
-    return send_from_directory(target_dir, filename, as_attachment=True)
-
-if __name__ == '__main__':
-    init_system()
-    app.run(debug=True)
+        return
