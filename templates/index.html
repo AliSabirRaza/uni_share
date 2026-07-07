@@ -1,1 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure University Materials Hub</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --elevated: #10b981;
+            --danger: #ef4444;
+            --border-color: #334155;
+        }
 
+        body { font-family: system-ui, sans-serif; max-width: 950px; margin: 40px auto; padding: 20px; background-color: var(--bg-color); color: var(--text-main); }
+        h1 { text-align: center; margin-bottom: 30px; font-weight: 700; }
+        h3 { margin-top: 0; color: var(--accent); border-bottom: 1px solid var(--border-color); padding-bottom: 8px;}
+        .box { background: var(--card-bg); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 25px; }
+        .flex-grid { display: flex; gap: 20px; }
+        .col { flex: 1; min-width: 0; }
+        
+        input, select { 
+            width: 100%; padding: 10px; margin: 8px 0 15px 0; 
+            background: var(--bg-color); border: 1px solid var(--border-color); 
+            border-radius: 6px; color: var(--text-main); box-sizing: border-box; 
+        }
+
+        button { background: var(--accent); color: #0f172a; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: 600; width: 100%; }
+        .btn-danger { background: var(--danger); color: white; width: auto; padding: 4px 8px; font-size: 11px; margin-left: 5px; }
+        .btn-secondary { background: #475569; color: white; width: auto; padding: 5px 10px; }
+
+        /* Modern Alert Flash Boxes */
+        .alert-flash {
+            background-color: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--danger);
+            color: #fca5a5;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .status-banner {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(56, 189, 248, 0.05); border: 1px solid var(--border-color);
+            padding: 15px 20px; border-radius: 8px; margin-bottom: 25px;
+        }
+
+        .subject-block { background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid var(--border-color); }
+        .subject-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .subject-title { font-weight: bold; color: #f1f5f9; }
+        .file-list { list-style: none; padding: 0; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--card-bg); border-radius: 6px; margin-bottom: 6px; }
+        .file-link { color: #e2e8f0; text-decoration: none; font-size: 14px; }
+        .file-link:hover { color: var(--accent); }
+        .empty-text { color: var(--text-muted); font-size: 13px; font-style: italic; }
+        .gateway-container { display: flex; gap: 40px; max-width: 800px; margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+    <h1>📚 Secure Materials Hub</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert-flash">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if email %}
+        <div class="status-banner">
+            <div>
+                Logged in: <strong style="color:var(--accent);">@{{ username }}</strong> 
+                <span style="color: var(--text-muted); font-size: 13px;">({{ email }})</span>
+                {% if is_admin %}
+                    <span style="background: rgba(16,185,129,0.1); color: var(--elevated); padding: 2px 8px; border-radius: 4px; font-size:12px; margin-left:10px; font-weight:bold;">Elevated Admin</span>
+                {% else %}
+                    <span style="background: rgba(255,255,255,0.05); color: var(--text-muted); padding: 2px 8px; border-radius: 4px; font-size:12px; margin-left:10px;">Student Tier</span>
+                {% endif %}
+            </div>
+            <a href="/logout"><button class="btn-secondary">Sign Out</button></a>
+        </div>
+        
+        <div class="flex-grid">
+            <div class="col" style="flex: 2;">
+                <div class="box">
+                    <h3>Submissions Panel</h3>
+                    <form action="/upload" method="POST" enctype="multipart/form-data">
+                        <label>Target Subject Folder:</label>
+                        <select name="subject" required>
+                            {% for subject in structure.keys() %}
+                                <option value="{{ subject }}">{{ subject }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="file" name="file" required>
+                        <button type="submit">Upload Document</button>
+                    </form>
+                </div>
+
+                {% if is_admin %}
+                    <div class="box" style="border-color: var(--elevated);">
+                        <h3 style="color: var(--elevated);">Administrative Functions</h3>
+                        <form action="/create-folder" method="POST">
+                            <input type="text" name="folder_name" placeholder="Create new subject folder" required>
+                            <button type="submit" style="background: var(--elevated);">Generate Folder</button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="col" style="flex: 3;">
+                <div class="box">
+                    <h3>Directory Folders</h3>
+                    
+                    {% for subject, files in structure.items() %}
+                        <div class="subject-block">
+                            <div class="subject-header">
+                                <span class="subject-title">📁 {{ subject }}</span>
+                                {% if is_admin %}
+                                    <form action="/delete-folder" method="POST" style="display:inline;">
+                                        <input type="hidden" name="subject" value="{{ subject }}">
+                                        <button type="submit" class="btn-danger">Delete Folder</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+
+                            <ul class="file-list">
+                                {% if files %}
+                                    {% for file in files %}
+                                        <li class="file-item">
+                                            <a href="/download/{{ subject }}/{{ file }}" class="file-link">{{ file }}</a>
+                                            {% if is_admin %}
+                                                <form action="/delete-file" method="POST" style="display:inline;">
+                                                    <input type="hidden" name="subject" value="{{ subject }}">
+                                                    <input type="hidden" name="filename" value="{{ file }}">
+                                                    <button type="submit" class="btn-danger">Wipe</button>
+                                                </form>
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                {% else %}
+                                    <li class="empty-text">Folder empty.</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+        <div class="gateway-container">
+            <div class="box col">
+                <h3>🆕 Create Account (Sign Up)</h3>
+                <form action="/signup" method="POST">
+                    <label>Gmail Address:</label>
+                    <input type="email" name="email" placeholder="student@gmail.com" required>
+                    <label>Display Username:</label>
+                    <input type="text" name="username" placeholder="Choose username" required>
+                    <label>Password:</label>
+                    <input type="password" name="password" placeholder="Create password" required>
+                    <button type="submit" style="background: #a855f7; color: white;">Sign Up & Enter</button>
+                </form>
+            </div>
+
+            <div class="box col">
+                <h3>🔑 Existing Account (Sign In)</h3>
+                <form action="/login" method="POST">
+                    <label>Gmail Address:</label>
+                    <input type="email" name="email" placeholder="student@gmail.com" required>
+                    <label>Password:</label>
+                    <input type="password" name="password" placeholder="Enter password" required>
+                    <button type="submit">Sign In</button>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+
+</body>
+</html>
