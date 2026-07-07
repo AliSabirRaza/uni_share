@@ -48,15 +48,18 @@ def init_system():
 
 @app.route('/')
 def index():
-    subjects = [d for d in os.listdir(app.config['UPLOAD_FOLDER']) if os.path.isdir(os.path.join(app.config['UPLOAD_FOLDER'], d))]
-    file_structure = {subj: os.listdir(os.path.join(app.config['UPLOAD_FOLDER'], subj)) for subj in subjects}
+    # 🛡️ Safety check: If the upload folder doesn't exist yet, pass an empty dict instead of crashing
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        file_structure = {}
+    else:
+        subjects = [d for d in os.listdir(app.config['UPLOAD_FOLDER']) if os.path.isdir(os.path.join(app.config['UPLOAD_FOLDER'], d))]
+        file_structure = {subj: os.listdir(os.path.join(app.config['UPLOAD_FOLDER'], subj)) for subj in subjects}
     
     user_email = session.get('email')
     username = session.get('username')
     is_admin = user_email in AUTHORIZED_GMAILS
     
     return render_template('index.html', structure=file_structure, email=user_email, username=username, is_admin=is_admin)
-
 @app.route('/signup', methods=['POST'])
 def signup():
     email = request.form.get('email').strip().lower()
