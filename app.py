@@ -33,15 +33,18 @@ class User(db.Model):
 DEFAULT_SUBJECTS = ['Mathematics', 'Physics', 'Computer Science']
 
 def init_system():
-    with app.app_context():
-        db.create_all() # Automatically generates database.db if missing
-    
+    # 1. ALWAYS CREATE THE PHYSICAL UPLOADS DIRECTORY FIRST
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
+        
     for subject in DEFAULT_SUBJECTS:
         subj_path = os.path.join(app.config['UPLOAD_FOLDER'], subject)
         if not os.path.exists(subj_path):
             os.makedirs(subj_path)
+
+    # 2. THEN BUILD THE DATABASE TABLES
+    with app.app_context():
+        db.create_all()
 
 @app.route('/')
 def index():
