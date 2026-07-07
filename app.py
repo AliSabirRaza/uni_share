@@ -8,11 +8,17 @@ app = Flask(__name__)
 # Cryptographically signs user session cookies safely using a persistent key
 app.secret_key = 'uni_share_permanent_production_secret_string_key'
 
-# Configure SQLite Database path securely
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'database.db')
+# 🛠️ CLOUD PRODUCTION DATABASE PATH CORRECTION
+# Moving database.db to /tmp bypasses read-only storage restrictions on cloud containers
+if os.name == 'nt':  # If running locally on Windows
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(BASE_DIR, "database.db")}'
+    app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
+else:  # If running publicly on Linux Cloud (Railway)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/database.db'
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
 
 db = SQLAlchemy(app)
 
@@ -28,27 +34,29 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True, nullable=False, index=True)
     username = db.Column(db.String(100), nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False) # Storing secure cryptographic hashes only
+    password_hash = db.Column(db.String(256), nullable=False)
 
 DEFAULT_SUBJECTS = ['Mathematics', 'Physics', 'Computer Science']
 
 def init_system():
     # 1. ALWAYS CREATE THE PHYSICAL UPLOADS DIRECTORY FIRST
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         
     for subject in DEFAULT_SUBJECTS:
         subj_path = os.path.join(app.config['UPLOAD_FOLDER'], subject)
         if not os.path.exists(subj_path):
-            os.makedirs(subj_path)
+            os.makedirs(subj_path, exist_ok=True)
 
     # 2. THEN BUILD THE DATABASE TABLES
     with app.app_context():
         db.create_all()
 
+# --- INITIALIZE SYSTEM AT GLOBAL SCOPE FOR GUNICORN PRODUCTION WORKERS ---
+init_system()
+
 @app.route('/')
 def index():
-    # 🛡️ Safety check: If the upload folder doesn't exist yet, pass an empty dict instead of crashing
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         file_structure = {}
     else:
@@ -67,18 +75,16 @@ def signup():
     username = request.form.get('username').strip()
     password = request.form.get('password')
     
-    # Fixed Query: Modern Flask-SQLAlchemy execution pattern preventing background engine crashes
     existing_user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
     if existing_user:
         flash("An account with this email already exists.", "danger")
         return redirect(url_for('index'))
         
-    # Salt and hash password using modern cryptographic standards
     hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
     
     new_user = User(email=email, username=username, password_hash=hashed_pw)
     db.session.add(new_user)
-    db.session.commit() # Safely committed to database.db
+    db.session.commit()
     
     session['email'] = email
     session['username'] = username
@@ -89,7 +95,6 @@ def login():
     email = request.form.get('email').strip().lower()
     password = request.form.get('password')
     
-    # Check if this specific email is already locked out in session memory
     if session.get('locked_out'):
         flash("Account login disabled due to excessive failures. Restart session to reset.", "danger")
         return redirect(url_for('index'))
@@ -97,14 +102,12 @@ def login():
     user = db.session.execute(db.select(User).filter_by(email=email)).scalar_one_or_none()
     
     if user and check_password_hash(user.password_hash, password):
-        # Successful login: Reset failure tracking variables entirely
         session.pop('login_attempts', None)
         session.pop('locked_out', None)
         session['email'] = email
         session['username'] = user['username']
         return redirect(url_for('index'))
         
-    # Increment tracking variables on authentication failure
     attempts = session.get('login_attempts', 0) + 1
     session['login_attempts'] = attempts
     max_allowed_retries = 3
@@ -133,7 +136,6 @@ def upload_file():
     subject = request.form.get('subject')
     file = request.files.get('file')
     
-    # Sanitizing input paths to block Directory Traversal attacks
     if file and subject and '..' not in subject:
         target_dir = os.path.join(app.config['UPLOAD_FOLDER'], subject)
         if os.path.exists(target_dir):
@@ -143,8 +145,6 @@ def upload_file():
             file.save(os.path.join(target_dir, custom_filename))
             
     return redirect(url_for('index'))
-
-# --- STRICT ELEVATED PROTECTION ROUTING ---
 
 @app.route('/create-folder', methods=['POST'])
 def create_folder():
@@ -156,7 +156,7 @@ def create_folder():
     if folder_name and '..' not in folder_name:
         new_dir = os.path.join(app.config['UPLOAD_FOLDER'], folder_name)
         if not os.path.exists(new_dir):
-            os.makedirs(new_dir)
+            os.makedirs(new_dir, exist_ok=True)
     return redirect(url_for('index'))
 
 @app.route('/delete-file', methods=['POST'])
@@ -190,4 +190,11 @@ def delete_folder():
 @app.route('/download/<subject>/<filename>')
 def download_file(subject, filename):
     if not session.get('email'):
-        return
+        return "Unauthorized Access", 403
+    if '..' in subject or '..' in filename:
+        return "Bad Request", 400
+    target_dir = os.path.join(app.config['UPLOAD_FOLDER'], subject)
+    return send_from_directory(target_dir, filename, as_attachment=True)
+
+if __name__ == '__main__':
+    app.run(debug=True)
